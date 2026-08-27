@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "576250601684",
+    "project_id": "academ-be4c8",
+    "storage_bucket": "academ-be4c8.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:576250601684:android:e6fb6c008fdb70f4b9db41",
+        "android_client_info": {
+          "package_name": "com.academyschool.student"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCXtrp_PcvdfZeBkDyI5yH7RNZPmDyrftU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
