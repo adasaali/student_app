@@ -1,4 +1,4 @@
-name: Build iOS
+﻿name: Build iOS
 
 on:
   workflow_dispatch:
@@ -29,17 +29,20 @@ jobs:
 
       - name: Verify iOS configuration
         run: |
-          echo "=== Podfile ==="
+          echo "===== PODFILE ====="
           cat ios/Podfile
-          echo "=== Deployment Targets ==="
+
+          echo "===== XCODE DEPLOYMENT TARGETS ====="
           grep -n "IPHONEOS_DEPLOYMENT_TARGET" ios/Runner.xcodeproj/project.pbxproj || true
-          echo "=== Bundle Identifier ==="
+
+          echo "===== BUNDLE IDENTIFIERS ====="
           grep -n "PRODUCT_BUNDLE_IDENTIFIER" ios/Runner.xcodeproj/project.pbxproj
 
       - name: Install CocoaPods dependencies
         run: |
           cd ios
           pod deintegrate || true
+          rm -rf Pods Podfile.lock
           pod install --repo-update
 
       - name: Build iOS
