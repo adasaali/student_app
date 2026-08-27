@@ -27,9 +27,19 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
+      - name: Verify iOS configuration
+        run: |
+          echo "=== Podfile ==="
+          cat ios/Podfile
+          echo "=== Deployment Targets ==="
+          grep -n "IPHONEOS_DEPLOYMENT_TARGET" ios/Runner.xcodeproj/project.pbxproj || true
+          echo "=== Bundle Identifier ==="
+          grep -n "PRODUCT_BUNDLE_IDENTIFIER" ios/Runner.xcodeproj/project.pbxproj
+
       - name: Install CocoaPods dependencies
         run: |
           cd ios
+          pod deintegrate || true
           pod install --repo-update
 
       - name: Build iOS
