@@ -27,17 +27,6 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Verify iOS configuration
-        run: |
-          echo "===== PODFILE ====="
-          cat ios/Podfile
-
-          echo "===== XCODE DEPLOYMENT TARGETS ====="
-          grep -n "IPHONEOS_DEPLOYMENT_TARGET" ios/Runner.xcodeproj/project.pbxproj || true
-
-          echo "===== BUNDLE IDENTIFIERS ====="
-          grep -n "PRODUCT_BUNDLE_IDENTIFIER" ios/Runner.xcodeproj/project.pbxproj
-
       - name: Install CocoaPods dependencies
         run: |
           cd ios
@@ -47,3 +36,16 @@ jobs:
 
       - name: Build iOS
         run: flutter build ios --release --no-codesign
+
+      - name: Package iOS app
+        run: |
+          mkdir -p artifacts
+          cp -R build/ios/iphoneos/Runner.app artifacts/Runner.app
+          cd artifacts
+          zip -r Runner-ios.zip Runner.app
+
+      - name: Upload iOS app
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-app
+          path: artifacts/Runner-ios.zip
