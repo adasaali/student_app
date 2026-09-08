@@ -948,6 +948,38 @@ class ApiService {
     return FinanceData.fromJson((body['data'] as Map).cast<String, dynamic>());
   }
 
+  /// 🆕 جلب تقييم الطالب (بطاقة "تقييم الطالب" بالصفحة الرئيسية) —
+  /// ربط مبدئي بـget_student_rating.php لحد ما يتحدد شكل نظام التقييم
+  /// الفعلي (مصدره، وشو بالضبط بيحسبه) لاحقاً.
+  ///
+  /// ⚠️ متعمّد إنها ترجع null بدل ما ترمي ApiException لأي سبب فشل
+  /// (endpoint لسا مو موجود على السيرفر، شكل رد مختلف، لا يوجد اتصال...)
+  /// — الشاشة يلي بتستدعيها (home_screen) عندها قيمة افتراضية ثابتة
+  /// تعرضها بدل التقييم الحقيقي بهالحالة، حتى ما ينكسر أي شي بالواجهة
+  /// لحد ما نخلّص ربط الـendpoint الحقيقي.
+  Future<double?> fetchStudentRating({int? targetStudentId}) async {
+    try {
+      _ensureAuthenticated();
+
+      final uri = Uri.parse('${baseUrl}get_student_rating.php').replace(
+        queryParameters: targetStudentId != null ? {'student_id': '$targetStudentId'} : null,
+      );
+
+      final body = await _getJsonCached(uri, 'rating_${targetStudentId ?? "self"}');
+
+      if (body is! Map || body['status'] != 'success' || body['data'] is! Map) return null;
+
+      final data = (body['data'] as Map);
+      final raw = data['rating'];
+      final rating = raw is num ? raw.toDouble() : double.tryParse('$raw');
+      if (rating == null) return null;
+
+      return rating.clamp(0.0, 5.0);
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// إرسال ملاحظة لولي الأمر إلى إدارة المدرسة (تظهر بمحادثة شاشة الدرجات)
   /// [targetStudentId]: لو محدد، الملاحظة بتترسل باسم هالأخ (بعد تبديل الحساب).
   Future<void> sendParentNote(String note, {int? targetStudentId}) async {

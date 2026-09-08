@@ -5,11 +5,17 @@ import '../services/api_service.dart';
 import '../theme/app_colors.dart';
 import 'home_shell.dart';
 
-/// شاشة إجبارية تظهر بعد أول تسجيل دخول (لما يكون الطالب لسا مسجّل
-/// دخول بكلمة السر الافتراضية = رقم هاتف الأب أو الأم). ما فيها زر
-/// رجوع — لازم يحدّد كلمة سر دائمة قبل ما يكمل لباقي التطبيق.
+/// شاشة تغيير كلمة السر — إلها استخدامان:
+/// 1) [isForced] = true (الافتراضي): تظهر إجباريًا بعد أول تسجيل دخول
+///    (لما يكون الطالب لسا مسجّل دخول بكلمة السر الافتراضية = رقم هاتف
+///    الأب أو الأم). ما فيها زر رجوع، وبعد النجاح بتروح مباشرة لـHomeShell.
+/// 2) [isForced] = false: تُفتح اختياريًا من شاشة الإعدادات. فيها زر
+///    رجوع عادي، وبعد النجاح بترجع (pop) لشاشة الإعدادات مع رسالة نجاح
+///    بدل ما تنقل المستخدم لمكان تاني.
 class ChangePasswordScreen extends StatefulWidget {
-  const ChangePasswordScreen({super.key});
+  final bool isForced;
+
+  const ChangePasswordScreen({super.key, this.isForced = true});
 
   @override
   State<ChangePasswordScreen> createState() => _ChangePasswordScreenState();
@@ -45,10 +51,18 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       await context.read<ApiService>().changePassword(_newPasswordController.text.trim());
 
       if (!mounted) return;
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const HomeShell()),
-      );
+
+      if (widget.isForced) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const HomeShell()),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تم تغيير كلمة السر بنجاح')),
+        );
+        Navigator.pop(context);
+      }
     } on ApiException catch (e) {
       setState(() => _errorMessage = e.message);
     } catch (e) {
@@ -60,45 +74,38 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: PopScope(
-        // ما بدنا نسمح له يرجع لشاشة الدخول أو يتخطى الشاشة قبل ما يغيّر
-        // كلمة السر — لهيك منمنع الرجوع.
-        canPop: false,
-        child: Scaffold(
-          backgroundColor: AppColors.gray50,
-          body: SafeArea(
-            child: Center(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Icon(Icons.lock_reset, size: 56, color: AppColors.gold),
-                      const SizedBox(height: 16),
-                      Text(
-                        'خلّينا نأمّن حسابك',
-                        textAlign: TextAlign.center,
-                        style: GoogleFonts.cairo(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.navy,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'دخلت بكلمة سر مؤقتة (رقم هاتف). لازم تحدد كلمة سر خاصة فيك قبل ما تكمل.',
-                        textAlign: TextAlign.center,
-                        style: GoogleFonts.cairo(
-                          fontSize: 13,
-                          color: AppColors.gray600,
-                        ),
-                      ),
-                      const SizedBox(height: 28),
+    final content = Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Icon(Icons.lock_reset, size: 56, color: AppColors.gold),
+              const SizedBox(height: 16),
+              Text(
+                widget.isForced ? 'خلّينا نأمّن حسابك' : 'تغيير كلمة السر',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.cairo(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.navy,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                widget.isForced
+                    ? 'دخلت بكلمة سر مؤقتة (رقم هاتف). لازم تحدد كلمة سر خاصة فيك قبل ما تكمل.'
+                    : 'اختر كلمة سر جديدة لحسابك.',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.cairo(
+                  fontSize: 13,
+                  color: AppColors.gray600,
+                ),
+              ),
+              const SizedBox(height: 28),
                       _PasswordField(
                         controller: _newPasswordController,
                         hint: 'كلمة السر الجديدة',
@@ -163,14 +170,36 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                                 ),
                         ),
                       ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
+            ],
           ),
         ),
       ),
+    );
+
+    final scaffold = Scaffold(
+      backgroundColor: AppColors.gray50,
+      appBar: widget.isForced
+          ? null
+          : AppBar(
+              backgroundColor: AppColors.white,
+              elevation: 0,
+              centerTitle: true,
+              iconTheme: const IconThemeData(color: AppColors.navy),
+              title: Text(
+                'تغيير كلمة السر',
+                style: GoogleFonts.cairo(fontSize: 17, fontWeight: FontWeight.w800, color: AppColors.navy),
+              ),
+            ),
+      body: SafeArea(child: content),
+    );
+
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: widget.isForced
+          // ما بدنا نسمح له يرجع لشاشة الدخول أو يتخطى الشاشة قبل ما يغيّر
+          // كلمة السر — لهيك منمنع الرجوع بس بحالة الشاشة الإجبارية.
+          ? PopScope(canPop: false, child: scaffold)
+          : scaffold,
     );
   }
 }

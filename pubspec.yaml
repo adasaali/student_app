@@ -58,6 +58,10 @@ dependencies:
   # 🆕 معاينة Word/Excel/PowerPoint وأي ملف تاني داخل التطبيق (AttachmentPreviewScreen)
   webview_flutter: ^4.10.0
 
+  # 🆕 فتح إعدادات النظام (لشاشة الإعدادات → تفعيل/تعطيل الإشعارات
+  # لمّا تكون الصلاحية محددة مسبقًا وما نقدر نعيد طلبها برمجيًا)
+  app_settings: ^7.0.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -51,6 +51,10 @@ class _HomeScreenState extends State<HomeScreen> {
       final connected = !results.contains(ConnectivityResult.none);
       if (mounted) setState(() => _hasConnection = connected);
     });
+    // 🆕 ربط مبدئي لبطاقة "تقييم الطالب" — استدعاء صامت بالخلفية، ما
+    // بيعطّل ظهور باقي الشاشة ولا بيوقف شي لو فشل (شوف تعليق
+    // fetchStudentRating بـStudentProvider).
+    context.read<StudentProvider>().fetchStudentRating();
   }
 
   @override
@@ -224,10 +228,11 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 0. تقييم الطالب (5 نجوم) — 🆕 مبدئياً ثابت 5/5 لكل الطلاب
-          // (لسا ما في نظام تقييم حقيقي مربوط بالسيرفر؛ لما يتوفر لاحقاً
-          // منقدر نستبدل الرقم الثابت هون بقيمة جاي من StudentProvider).
-          _buildRatingCard(goldColor),
+          // 0. تقييم الطالب (نجوم) — 🆕 مربوطة الآن بـget_student_rating.php
+          // (ربط مبدئي — لو ما وصل رد صالح من السيرفر لأي سبب، بترجع
+          // للقيمة الافتراضية الثابتة 5/5 يلي كانت معروضة قبل هيك، منشان
+          // ما يبين أي فراغ أو خطأ بالواجهة لحد ما يخلص شكل النظام الحقيقي).
+          _buildRatingCard(goldColor, studentProvider.studentRating),
 
           const SizedBox(height: 16),
 
@@ -433,7 +438,13 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // 🆕 بطاقة تقييم الطالب — 5 نجوم ذهبية، مبدئياً ثابتة (5/5) لكل الطلاب.
+  // 🆕 بطاقة تقييم الطالب — نجوم ذهبية.
+  //
+  // [serverRating]: القيمة الجاية من get_student_rating.php عبر
+  // StudentProvider (من 0 لـ5)، أو null لو لسا ما انجلبت أو فشل
+  // الطلب (endpoint لسا مو جاهز بالسيرفر مثلاً). بهالحالة منرجع
+  // للقيمة الافتراضية الثابتة (5/5) يلي كانت الوحيدة قبل الربط،
+  // منشان الواجهة تضل نفسها بالضبط وما يبين أي فراغ/خطأ للأهل.
   //
   // ⚠️ مهم: النجوم هون مرسومة يدوياً (CustomPaint) بدل استخدام أيقونة
   // جاهزة من خط الأيقونات (Icons.star). السبب: أيقونات Flutter بتنعمل
@@ -442,9 +453,9 @@ class _HomeScreenState extends State<HomeScreen> {
   // release الأول، رح تظهر مربعات فاضية عند الأهالي لأنه الـ patch
   // بيحدّث الكود بس مش ملفات الخطوط. الرسم اليدوي هون بيتجنّب المشكلة
   // نهائياً — بيشتغل بأي patch مستقبلي بدون قلق.
-  Widget _buildRatingCard(Color goldColor) {
-    const int rating = 5; // ثابت حالياً — لسا ما في مصدر بيانات حقيقي للتقييم.
+  Widget _buildRatingCard(Color goldColor, double? serverRating) {
     const int maxRating = 5;
+    final int rating = (serverRating ?? 5.0).clamp(0, maxRating).round();
 
     return Container(
       width: double.infinity,

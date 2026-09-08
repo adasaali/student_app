@@ -65,6 +65,11 @@ class StudentProvider extends ChangeNotifier {
   bool _isLoadingFinance = false;
   String? _financeError;
 
+  // 🆕 تقييم الطالب — null يعني "لسا ما انجلب/الخدمة مو جاهزة بعد"،
+  // وليس صفر. الشاشة يلي بتعرضه هي المسؤولة عن اختيار قيمة افتراضية
+  // بديلة بهالحالة (شوف تعليق fetchStudentRating بـApiService).
+  double? _studentRating;
+
   List<HomeworkItem> _homework = [];
   bool _isLoadingHomework = false;
   String? _homeworkError;
@@ -150,6 +155,8 @@ class StudentProvider extends ChangeNotifier {
   FinanceData get finance => _finance;
   bool get isLoadingFinance => _isLoadingFinance;
   String? get financeError => _financeError;
+  double? get studentRating => _studentRating;
+
 
   List<HomeworkItem> get homework => _homework;
   bool get isLoadingHomework => _isLoadingHomework;
@@ -396,6 +403,8 @@ class StudentProvider extends ChangeNotifier {
       _curriculumError = null;
       _galleryAlbums = [];
       _galleryError = null;
+      _studentRating = null;
+      unawaited(fetchStudentRating());
     } catch (e) {
       _error = e is ApiException ? e.message : e.toString();
     } finally {
@@ -537,6 +546,21 @@ class StudentProvider extends ChangeNotifier {
       _financeError = e is ApiException ? e.message : 'تعذر جلب الحالة المالية';
     } finally {
       _isLoadingFinance = false;
+      notifyListeners();
+    }
+  }
+
+  /// 🆕 جلب تقييم الحساب النشط حالياً — استدعاء "صامت" بدون حالة تحميل/خطأ
+  /// ظاهرة للواجهة (نفس فلسفة fetchStudentRating بـApiService: أي فشل
+  /// برجع null بهدوء والواجهة بتستخدم قيمة افتراضية بدلها، فما في داعي
+  /// لـisLoading/error منفصلين هون حاليًا).
+  Future<void> fetchStudentRating() async {
+    try {
+      await _ensureToken();
+      _studentRating = await _api.fetchStudentRating(targetStudentId: _activeStudentId);
+    } catch (_) {
+      _studentRating = null;
+    } finally {
       notifyListeners();
     }
   }
@@ -861,6 +885,7 @@ class StudentProvider extends ChangeNotifier {
     _absenceStats = AbsenceStats.empty();
     _finance = FinanceData.empty();
     _financeError = null;
+    _studentRating = null;
     _homework = [];
     _homeworkError = null;
     _exams = [];
