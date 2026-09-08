@@ -6,6 +6,7 @@ import '../theme/sibling_palette.dart';
 import '../widgets/placeholder_screen.dart';
 import '../providers/student_provider.dart';
 import '../models/homework_item.dart';
+import '../widgets/attachment_chip.dart';
 
 /// الواجبات — تُفتح من الدرج أو بلاطة "الواجبات" بالشاشة الرئيسية.
 /// مربوطة فعلياً بـ StudentProvider.fetchHomework() (بعد ما كانت
@@ -250,6 +251,25 @@ class _HomeworkCard extends StatelessWidget {
                     ),
                   ),
                 ],
+              ),
+            ],
+
+            if (item.attachments.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: item.attachments
+                    .map((a) => SizedBox(
+                          width: 150,
+                          child: AttachmentChip(
+                            fileUrl: a.fileUrl,
+                            fileName: a.fileName,
+                            mimeType: a.mimeType,
+                            fileSize: a.fileSize,
+                          ),
+                        ))
+                    .toList(),
               ),
             ],
 

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'api_service.dart';
 import 'chat_models.dart';
 
@@ -68,13 +69,15 @@ class ChatService {
     required int conversationId,
     required String text,
     int? targetStudentId,
+    File? attachmentFile, // 🆕
   }) async {
     final trimmed = text.trim();
-    if (trimmed.isEmpty) return;
+    if (trimmed.isEmpty && attachmentFile == null) return;
     await _api.sendChatMessage(
       conversationId: conversationId,
       text: trimmed,
       targetStudentId: targetStudentId,
+      attachmentFile: attachmentFile,
     );
   }
 

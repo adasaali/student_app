@@ -11,6 +11,7 @@ pluginManagement {
     includeBuild("$flutterSdkPath/packages/flutter_tools/gradle")
 
     repositories {
+        maven { url = uri("offline-repo") }
         google()
         mavenCentral()
         gradlePluginPortal()

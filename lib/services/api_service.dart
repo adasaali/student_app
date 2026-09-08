@@ -1,7 +1,10 @@
 import 'dart:convert';
 import 'dart:async';
+import 'dart:io';
 import 'dart:developer' as developer;
 import 'package:http/http.dart' as http;
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'local_cache_service.dart';
 import '../models/student.dart';
 import '../models/student_model.dart';
 import '../models/notification_item.dart';
@@ -13,8 +16,12 @@ import '../models/announcement_item.dart';
 import '../models/announcement_comment.dart';
 import '../models/behavior_note.dart';
 import '../models/worksheet_item.dart';
+import '../models/curriculum_item.dart';
 import '../models/calendar_event.dart';
 import '../models/finance_data.dart';
+import '../models/gallery_album.dart';
+import '../models/exam_item.dart';
+import '../models/exam_schedule.dart';
 
 class ApiException implements Exception {
   final String message;
@@ -38,6 +45,18 @@ class ApiService {
   // يعمل على كل المنصات (أندرويد/iOS/ويب/ديسكتوب) دون أي تعديل إضافي.
   final http.Client _client = http.Client();
   String? _authToken;
+
+  // ==================== 🆕 دعم وضع الأوف لاين ====================
+  // LocalCacheService اختياري — إذا انربط (attachCache) رح يخزن كل رد
+  // ناجح من نوع GET بقاعدة بيانات محلية (sqflite)، وبيستخدمها تلقائياً
+  // كبديل لما ما يكون في اتصال بالإنترنت أو لما يفشل الطلب. لو ما
+  // انربط أي cache، السلوك القديم بيضل نفسه تماماً (بدون أي تغيير).
+  LocalCacheService? _cache;
+  void attachCache(LocalCacheService cache) => _cache = cache;
+
+  /// 🆕 يفضي كل الكاش المحلي (البيانات المحفوظة أوف لاين) — تُنادى عند
+  /// تسجيل الخروج حتى ما يضل حساب سابق شايف بيانات محفوظة لحساب غيره.
+  Future<void> clearCache() => _cache?.clearAll() ?? Future.value();
 
   void setToken(String token) => _authToken = token;
   void clearToken() => _authToken = null;
@@ -102,6 +121,64 @@ class ApiService {
     }
   }
 
+  /// 🆕 يتأكد إذا في اتصال فعلي بالإنترنت (مش بس واي فاي متصل بشبكة
+  /// بدون نت فعلي — connectivity_plus بيتأكد من هيك). لو صار خطأ أثناء
+  /// التحقق منفسه، منفترض إنه في اتصال ومنسيب الطلب الفعلي يقرر.
+  Future<bool> _hasConnection() async {
+    try {
+      final results = await Connectivity().checkConnectivity();
+      return !results.contains(ConnectivityResult.none);
+    } catch (_) {
+      return true;
+    }
+  }
+
+  /// 🆕 جلب JSON من GET endpoint مع دعم كامل لوضع الأوف لاين:
+  /// - ما في اتصال بالإنترنت أصلاً؟ يرجع فوراً آخر نسخة محفوظة محلياً
+  ///   (بدون ما ينتظر مهلة الشبكة/timeout) — وإذا ما في ولا نسخة محفوظة
+  ///   (أول مرة بدون نت) بيرمي استثناء NO_CONNECTION العادي.
+  /// - في اتصال؟ يجرب الشبكة كالمعتاد، ولو نجح يخزن الرد بالكاش قبل ما
+  ///   يرجعه (يصير جاهز لأي مرة قادمة بدون نت). ولو فشل الطلب (السيرفر
+  ///   واقع مثلاً) بيرجع آخر نسخة محفوظة إذا موجودة، وإلا يرمي الخطأ
+  ///   الأصلي متل قبل تماماً.
+  ///
+  /// [cacheKey] لازم يكون فريد لكل نوع بيانات + لكل حساب (مثلاً
+  /// 'homework_1023') حتى ما يختلط كاش أخ بكاش أخيه.
+  Future<dynamic> _getJsonCached(Uri uri, String cacheKey) async {
+    if (_cache == null) {
+      // ما في cache مربوط أصلاً → نفس السلوك القديم تماماً.
+      final response = await _requestWithRetry(() => _client.get(uri, headers: _headers));
+      return _handleResponse(response);
+    }
+
+    final hasConnection = await _hasConnection();
+
+    if (!hasConnection) {
+      final cached = await _cache!.read(cacheKey);
+      if (cached != null) {
+        developer.log('Offline mode: serving cached "$cacheKey"', name: 'ApiService');
+        return _safeDecode(cached);
+      }
+      throw ApiException('لا يوجد اتصال بالإنترنت ولا توجد بيانات محفوظة مسبقاً', code: 'NO_CONNECTION');
+    }
+
+    try {
+      final response = await _requestWithRetry(() => _client.get(uri, headers: _headers));
+      final body = _handleResponse(response);
+      if (body != null) {
+        unawaited(_cache!.write(cacheKey, jsonEncode(body)));
+      }
+      return body;
+    } catch (e) {
+      final cached = await _cache!.read(cacheKey);
+      if (cached != null) {
+        developer.log('Network failed ($e), serving cached "$cacheKey"', name: 'ApiService');
+        return _safeDecode(cached);
+      }
+      rethrow;
+    }
+  }
+
   Future<http.Response> _requestWithRetry(
       Future<http.Response> Function() request, {
         int retries = 0,
@@ -152,9 +229,61 @@ class ApiService {
 
     if (data['token'] != null) {
       setToken(data['token']);
+      // ملاحظة: حدث "login" بنظام النشاط بيتسجل من السيرفر مباشرة
+      // (api_login.php) — ما احتجنا نكرره من هون.
     }
 
     return data.cast<String, dynamic>();
+  }
+
+  /// 🆕 تغيير كلمة السر — تُستدعى إجبارياً بعد أول تسجيل دخول لما يكون
+  /// السيرفر رجّع must_change_password = true (يعني كلمة السر لسا رقم
+  /// هاتف الأب أو الأم). لازم تكون مسجّلة دخول (فيها توكن) قبل ما تناديها.
+  Future<void> changePassword(String newPassword) async {
+    _ensureAuthenticated();
+
+    final response = await _requestWithRetry(() => _client.post(
+      Uri.parse('${baseUrl}change_password.php'),
+      headers: {..._headers, 'Content-Type': 'application/json'},
+      body: jsonEncode({'new_password': newPassword}),
+    ));
+
+    final data = _handleResponse(response);
+    if (data is! Map || data['status'] != 'success') {
+      throw ApiException(
+        (data is Map ? data['message'] : null) ?? 'تعذّر تغيير كلمة السر',
+        code: 'CHANGE_PASSWORD_FAILED',
+      );
+    }
+  }
+
+  /// 🆕 تسجيل نشاط (تسجيل دخول، فتح صفحة طالب/أخ، مدة مشاهدة...) —
+  /// نظام "مين أونلاين وشو عم يعمل" الخاص بلوحة المدير. مصمّمة لتنادى
+  /// بشكل "fire-and-forget" (بدون await من المتصل، أو مع تجاهل الخطأ)
+  /// حتى ما تبطّئ أو توقف أي شاشة بالتطبيق لو فشلت أو ما في اتصال.
+  Future<void> logActivity(
+      String actionType, {
+        int? studentId,
+        int? durationSecs,
+      }) async {
+    if (_authToken == null) return; // ما في تسجيل نشاط قبل تسجيل الدخول
+    try {
+      final response = await _client
+          .post(
+        Uri.parse('${baseUrl}log_activity.php'),
+        headers: _headers,
+        body: jsonEncode({
+          'action_type': actionType,
+          if (studentId != null) 'student_id': studentId,
+          if (durationSecs != null) 'duration_secs': durationSecs,
+        }),
+      )
+          .timeout(const Duration(seconds: 8));
+      developer.log('logActivity($actionType) -> ${response.statusCode}', name: 'ApiService');
+    } catch (e) {
+      // نشاط تحليلي بس — فشله ما لازم يوقف أو يزعج المستخدم أبداً.
+      developer.log('logActivity failed (ignored): $e', name: 'ApiService');
+    }
   }
 
   /// [targetStudentId]: لو محدد (بعد تبديل الحساب لأخ)، بيجيب بيانات هالأخ
@@ -166,12 +295,7 @@ class ApiService {
       queryParameters: targetStudentId != null ? {'student_id': '$targetStudentId'} : null,
     );
 
-    final response = await _requestWithRetry(() => _client.get(
-      uri,
-      headers: _headers,
-    ));
-
-    final body = _handleResponse(response);
+    final body = await _getJsonCached(uri, 'student_data_${targetStudentId ?? "self"}');
 
     final data = body is Map && body['status'] == 'success' ? body['data'] : body;
 
@@ -185,12 +309,7 @@ class ApiService {
   Future<List<Sibling>> fetchSiblings() async {
     _ensureAuthenticated();
 
-    final response = await _requestWithRetry(() => _client.get(
-      Uri.parse('${baseUrl}siblings.php'),
-      headers: _headers,
-    ));
-
-    final body = _handleResponse(response);
+    final body = await _getJsonCached(Uri.parse('${baseUrl}siblings.php'), 'siblings_list');
 
     // بعض الـ APIs تُرجع القائمة مباشرة، وبعضها يغلفها بـ {status, data}
     final list = body is List ? body : (body is Map ? body['data'] : null);
@@ -278,18 +397,43 @@ class ApiService {
     required int conversationId,
     required String text,
     int? targetStudentId,
+    File? attachmentFile, // 🆕
   }) async {
     _ensureAuthenticated();
 
+    // 🆕 لو في مرفق لازم multipart/form-data (نفس نمط رفع صور الجدول/المعرض
+    // بالسيرفر الآخر) — بدون مرفق منضل نستخدم JSON القديم بلا أي تغيير.
+    if (attachmentFile != null) {
+      final req = http.MultipartRequest('POST', Uri.parse('${baseUrl}send_chat_message.php'));
+      req.headers.addAll(_headers);
+      req.fields['conversation_id'] = '$conversationId';
+      req.fields['text'] = text;
+      if (targetStudentId != null) req.fields['student_id'] = '$targetStudentId';
+      req.files.add(await http.MultipartFile.fromPath('attachment', attachmentFile.path));
+
+      final response = await _requestWithRetry(() async {
+        final streamed = await req.send();
+        return http.Response.fromStream(streamed);
+      });
+      final body = _handleResponse(response);
+      if (body is! Map || body['status'] != 'success') {
+        throw ApiException(
+          (body is Map ? body['message'] : null) ?? 'تعذّر إرسال المرفق',
+          code: 'SEND_MESSAGE_FAILED',
+        );
+      }
+      return;
+    }
+
     final response = await _requestWithRetry(() => _client.post(
-          Uri.parse('${baseUrl}send_chat_message.php'),
-          headers: {..._headers, 'Content-Type': 'application/json'},
-          body: jsonEncode({
-            'conversation_id': conversationId,
-            'text': text,
-            if (targetStudentId != null) 'student_id': targetStudentId,
-          }),
-        ));
+      Uri.parse('${baseUrl}send_chat_message.php'),
+      headers: {..._headers, 'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'conversation_id': conversationId,
+        'text': text,
+        if (targetStudentId != null) 'student_id': targetStudentId,
+      }),
+    ));
 
     final body = _handleResponse(response);
     if (body is! Map || body['status'] != 'success') {
@@ -304,13 +448,13 @@ class ApiService {
     _ensureAuthenticated();
 
     await _requestWithRetry(() => _client.post(
-          Uri.parse('${baseUrl}mark_chat_read.php'),
-          headers: {..._headers, 'Content-Type': 'application/json'},
-          body: jsonEncode({
-            'conversation_id': conversationId,
-            if (targetStudentId != null) 'student_id': targetStudentId,
-          }),
-        ));
+      Uri.parse('${baseUrl}mark_chat_read.php'),
+      headers: {..._headers, 'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'conversation_id': conversationId,
+        if (targetStudentId != null) 'student_id': targetStudentId,
+      }),
+    ));
   }
 
   Future<void> registerFcmToken(String fcmToken, String platform) async {
@@ -340,12 +484,7 @@ class ApiService {
       queryParameters: targetStudentId != null ? {'student_id': '$targetStudentId'} : null,
     );
 
-    final response = await _requestWithRetry(() => _client.get(
-      uri,
-      headers: _headers,
-    ));
-
-    final body = _handleResponse(response);
+    final body = await _getJsonCached(uri, 'notifications_${targetStudentId ?? "self"}');
 
     if (body is! Map || body['status'] != 'success') {
       throw ApiException('تعذر جلب الإشعارات', code: 'INVALID_DATA');
@@ -389,12 +528,7 @@ class ApiService {
       queryParameters: targetStudentId != null ? {'student_id': '$targetStudentId'} : null,
     );
 
-    final response = await _requestWithRetry(() => _client.get(
-      uri,
-      headers: _headers,
-    ));
-
-    final body = _handleResponse(response);
+    final body = await _getJsonCached(uri, 'absences_${targetStudentId ?? "self"}');
 
     if (body is! Map || body['status'] != 'success') {
       throw ApiException('تعذر جلب سجل الغياب', code: 'INVALID_DATA');
@@ -421,12 +555,7 @@ class ApiService {
       queryParameters: targetStudentId != null ? {'student_id': '$targetStudentId'} : null,
     );
 
-    final response = await _requestWithRetry(() => _client.get(
-      uri,
-      headers: _headers,
-    ));
-
-    final body = _handleResponse(response);
+    final body = await _getJsonCached(uri, 'behavior_notes_${targetStudentId ?? "self"}');
 
     if (body is! Map || body['status'] != 'success') {
       throw ApiException('تعذر جلب الملاحظات', code: 'INVALID_DATA');
@@ -454,12 +583,7 @@ class ApiService {
       queryParameters: targetStudentId != null ? {'student_id': '$targetStudentId'} : null,
     );
 
-    final response = await _requestWithRetry(() => _client.get(
-      uri,
-      headers: _headers,
-    ));
-
-    final body = _handleResponse(response);
+    final body = await _getJsonCached(uri, 'worksheets_${targetStudentId ?? "self"}');
 
     if (body is! Map || body['status'] != 'success') {
       throw ApiException('تعذر جلب أوراق العمل', code: 'INVALID_DATA');
@@ -468,6 +592,81 @@ class ApiService {
     return (body['data'] as List? ?? [])
         .map((e) => WorksheetItem.fromJson((e as Map).cast<String, dynamic>()))
         .toList();
+  }
+
+  /// 🆕 المنهاج الرسمي — قائمة ملفات المنهج (PDF) الخاصة بصف الحساب
+  /// النشط حالياً، مفلترة سيرفرياً حسب grade_id. [targetStudentId]:
+  /// نفس نمط fetchWorksheets بالضبط.
+  Future<List<CurriculumItem>> fetchCurriculum({int? targetStudentId}) async {
+    _ensureAuthenticated();
+
+    final uri = Uri.parse('${baseUrl}get_curriculum.php').replace(
+      queryParameters: targetStudentId != null ? {'student_id': '$targetStudentId'} : null,
+    );
+
+    final body = await _getJsonCached(uri, 'curriculum_${targetStudentId ?? "self"}');
+
+    if (body is! Map || body['status'] != 'success') {
+      throw ApiException('تعذر جلب المنهاج', code: 'INVALID_DATA');
+    }
+
+    return (body['data'] as List? ?? [])
+        .map((e) => CurriculumItem.fromJson((e as Map).cast<String, dynamic>()))
+        .toList();
+  }
+
+  /// 🆕 المعرض — قائمة كل ألبومات الصور/الفيديو المتاحة لصف وشعبة
+  /// الحساب النشط حالياً (ألبومات "كل المدرسة" + الألبومات المستهدفة
+  /// لشعبته تحديداً). [targetStudentId]: نفس نمط fetchWorksheets بالضبط.
+  Future<List<GalleryAlbum>> fetchGalleryAlbums({int? targetStudentId}) async {
+    _ensureAuthenticated();
+
+    final uri = Uri.parse('${baseUrl}get_gallery.php').replace(
+      queryParameters: targetStudentId != null ? {'student_id': '$targetStudentId'} : null,
+    );
+
+    final body = await _getJsonCached(uri, 'gallery_${targetStudentId ?? "self"}');
+
+    if (body is! Map || body['status'] != 'success') {
+      throw ApiException(
+        (body is Map ? body['message'] : null) ?? 'تعذر جلب المعرض',
+        code: 'INVALID_DATA',
+      );
+    }
+
+    return (body['data'] as List? ?? [])
+        .map((e) => GalleryAlbum.fromJson((e as Map).cast<String, dynamic>()))
+        .toList();
+  }
+
+  /// 🆕 تفاصيل ألبوم واحد بالمعرض (كل الصور/الفيديوهات فيه) —
+  /// [targetStudentId]: نفس نمط fetchWorksheets بالضبط. السيرفر بيتحقق
+  /// من صلاحية الوصول للألبوم (صف/شعبة الطالب) قبل ما يرجع بياناته.
+  Future<GalleryAlbum> fetchGalleryAlbumDetail(int albumId, {int? targetStudentId}) async {
+    _ensureAuthenticated();
+
+    final uri = Uri.parse('${baseUrl}get_gallery.php').replace(
+      queryParameters: {
+        'album_id': '$albumId',
+        if (targetStudentId != null) 'student_id': '$targetStudentId',
+      },
+    );
+
+    final response = await _requestWithRetry(() => _client.get(
+      uri,
+      headers: _headers,
+    ));
+
+    final body = _handleResponse(response);
+
+    if (body is! Map || body['status'] != 'success' || body['data'] is! Map) {
+      throw ApiException(
+        (body is Map ? body['message'] : null) ?? 'تعذر جلب الألبوم',
+        code: 'INVALID_DATA',
+      );
+    }
+
+    return GalleryAlbum.fromJson((body['data'] as Map).cast<String, dynamic>());
   }
 
   /// [targetStudentId]: لو محدد (بعد تبديل الحساب لأخ)، بيجيب واجبات
@@ -481,12 +680,7 @@ class ApiService {
       queryParameters: targetStudentId != null ? {'student_id': '$targetStudentId'} : null,
     );
 
-    final response = await _requestWithRetry(() => _client.get(
-      uri,
-      headers: _headers,
-    ));
-
-    final body = _handleResponse(response);
+    final body = await _getJsonCached(uri, 'homework_${targetStudentId ?? "self"}');
 
     if (body is! Map || body['status'] != 'success') {
       throw ApiException('تعذر جلب الواجبات', code: 'INVALID_DATA');
@@ -497,6 +691,27 @@ class ApiService {
         .toList();
 
     return list;
+  }
+
+  /// 🆕 تبويبة "الاختبارات" — كل سجلات "السبر" (student_tracking type
+  /// = 'quiz') يلي الطالب مضاف عليها، مع علامتها لو المشرف صدّرها، أو
+  /// حالة pending لو لسا. [targetStudentId]: نفس نمط fetchHomework بالضبط.
+  Future<List<ExamItem>> fetchExams({int? targetStudentId}) async {
+    _ensureAuthenticated();
+
+    final uri = Uri.parse('${baseUrl}get_exams.php').replace(
+      queryParameters: targetStudentId != null ? {'student_id': '$targetStudentId'} : null,
+    );
+
+    final body = await _getJsonCached(uri, 'exams_${targetStudentId ?? "self"}');
+
+    if (body is! Map || body['status'] != 'success') {
+      throw ApiException('تعذر جلب الاختبارات', code: 'INVALID_DATA');
+    }
+
+    return (body['data'] as List? ?? [])
+        .map((e) => ExamItem.fromJson((e as Map).cast<String, dynamic>()))
+        .toList();
   }
 
   /// [targetStudentId]: لو محدد (بعد تبديل الحساب لأخ)، بيجيب إعلانات
@@ -510,12 +725,7 @@ class ApiService {
       queryParameters: targetStudentId != null ? {'student_id': '$targetStudentId'} : null,
     );
 
-    final response = await _requestWithRetry(() => _client.get(
-      uri,
-      headers: _headers,
-    ));
-
-    final body = _handleResponse(response);
+    final body = await _getJsonCached(uri, 'announcements_${targetStudentId ?? "self"}');
 
     if (body is! Map || body['status'] != 'success') {
       throw ApiException('تعذر جلب الإعلانات', code: 'INVALID_DATA');
@@ -528,18 +738,36 @@ class ApiService {
     return list;
   }
 
+  /// 🆕 تبويبة "الامتحانات" (البرنامج الامتحاني الرسمي — منفصل عن
+  /// "الاختبارات"/fetchExams اللي بيعرض نتائج السبر والتسميع). بيرجع
+  /// برنامج صف الطالب للعام/الفصل الدراسي النشطين حالياً، يديره
+  /// الأدمن من admin/exam_schedule/exam_schedule.php.
+  /// [targetStudentId]: نفس نمط fetchExams/fetchHomework بالضبط.
+  Future<List<ExamSchedule>> fetchExamSchedule({int? targetStudentId}) async {
+    _ensureAuthenticated();
+
+    final uri = Uri.parse('${baseUrl}get_exam_schedule.php').replace(
+      queryParameters: targetStudentId != null ? {'student_id': '$targetStudentId'} : null,
+    );
+
+    final body = await _getJsonCached(uri, 'exam_schedule_${targetStudentId ?? "self"}');
+
+    if (body is! Map || body['status'] != 'success') {
+      throw ApiException('تعذر جلب البرنامج الامتحاني', code: 'INVALID_DATA');
+    }
+
+    return (body['data'] as List? ?? [])
+        .map((e) => ExamSchedule.fromJson((e as Map).cast<String, dynamic>()))
+        .toList();
+  }
+
   /// جلب التقويم المدرسي الرسمي (بدء الدوام، الامتحانات، العطل...) —
   /// يديره الأدمن من admin/calendar/school_calendar.php. لا يعتمد على
   /// طالب معيّن، فما في حاجة لـ targetStudentId هون.
   Future<List<CalendarEvent>> fetchCalendarEvents() async {
     _ensureAuthenticated();
 
-    final response = await _requestWithRetry(() => _client.get(
-      Uri.parse('${baseUrl}get_calendar_events.php'),
-      headers: _headers,
-    ));
-
-    final body = _handleResponse(response);
+    final body = await _getJsonCached(Uri.parse('${baseUrl}get_calendar_events.php'), 'calendar_events');
 
     if (body is! Map || body['status'] != 'success') {
       throw ApiException(
@@ -659,12 +887,7 @@ class ApiService {
       queryParameters: targetStudentId != null ? {'student_id': '$targetStudentId'} : null,
     );
 
-    final response = await _requestWithRetry(() => _client.get(
-      uri,
-      headers: _headers,
-    ));
-
-    final body = _handleResponse(response);
+    final body = await _getJsonCached(uri, 'weekly_schedule_${targetStudentId ?? "self"}');
 
     if (body is! Map || body['status'] != 'success' || body['data'] is! Map) {
       throw ApiException(
@@ -688,12 +911,10 @@ class ApiService {
       },
     );
 
-    final response = await _requestWithRetry(() => _client.get(
+    final body = await _getJsonCached(
       uri,
-      headers: _headers,
-    ));
-
-    final body = _handleResponse(response);
+      'grade_report_${targetStudentId ?? "self"}_${academicYearId ?? "current"}',
+    );
 
     if (body is! Map || body['status'] != 'success' || body['data'] is! Map) {
       throw ApiException(
@@ -715,12 +936,7 @@ class ApiService {
       queryParameters: targetStudentId != null ? {'student_id': '$targetStudentId'} : null,
     );
 
-    final response = await _requestWithRetry(() => _client.get(
-      uri,
-      headers: _headers,
-    ));
-
-    final body = _handleResponse(response);
+    final body = await _getJsonCached(uri, 'finance_${targetStudentId ?? "self"}');
 
     if (body is! Map || body['status'] != 'success' || body['data'] is! Map) {
       throw ApiException(

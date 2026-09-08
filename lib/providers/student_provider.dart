@@ -7,14 +7,19 @@ import '../models/absence_record.dart';
 import '../models/grade_report.dart';
 import '../models/weekly_schedule.dart';
 import '../models/homework_item.dart';
+import '../models/exam_item.dart';
+import '../models/exam_schedule.dart';
 import '../models/announcement_item.dart';
 import '../models/announcement_comment.dart';
 import '../models/behavior_note.dart';
 import '../models/worksheet_item.dart';
+import '../models/curriculum_item.dart';
 import '../models/calendar_event.dart';
 import '../models/finance_data.dart';
+import '../models/gallery_album.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
+import '../services/activity_service.dart';
 
 /// ملخّص موحّد لحساب واحد (الطالب الأساسي أو أحد إخوته) — للاستخدام
 /// بشريط تبديل الحسابات وبفلتر شاشة الإشعارات.
@@ -38,7 +43,11 @@ class StudentProvider extends ChangeNotifier {
   final ApiService _api;
   final AuthService _auth = AuthService();
 
-  StudentProvider(this._api);
+  // 🆕 نظام "مين أونلاين وشو عم يعمل" + "وقت فتح كل صفحة" — انظر
+  // activity_service.dart. ما بأثر على أي منطق قديم، بس بيسجل بالخلفية.
+  final ActivityService _activity;
+
+  StudentProvider(this._api) : _activity = ActivityService(_api);
 
   Student? _student;
   List<Sibling> _siblings = [];
@@ -60,6 +69,14 @@ class StudentProvider extends ChangeNotifier {
   bool _isLoadingHomework = false;
   String? _homeworkError;
 
+  List<ExamItem> _exams = [];
+  bool _isLoadingExams = false;
+  String? _examsError;
+
+  List<ExamSchedule> _examSchedules = [];
+  bool _isLoadingExamSchedule = false;
+  String? _examScheduleError;
+
   List<AnnouncementItem> _announcements = [];
   bool _isLoadingAnnouncements = false;
   String? _announcementsError;
@@ -76,6 +93,14 @@ class StudentProvider extends ChangeNotifier {
   List<WorksheetItem> _worksheets = [];
   bool _isLoadingWorksheets = false;
   String? _worksheetsError;
+
+  List<CurriculumItem> _curriculum = [];
+  bool _isLoadingCurriculum = false;
+  String? _curriculumError;
+
+  List<GalleryAlbum> _galleryAlbums = [];
+  bool _isLoadingGallery = false;
+  String? _galleryError;
 
   GradeReport? _gradeReport;
   bool _isLoadingGradeReport = false;
@@ -130,6 +155,14 @@ class StudentProvider extends ChangeNotifier {
   bool get isLoadingHomework => _isLoadingHomework;
   String? get homeworkError => _homeworkError;
 
+  List<ExamItem> get exams => _exams;
+  bool get isLoadingExams => _isLoadingExams;
+  String? get examsError => _examsError;
+
+  List<ExamSchedule> get examSchedules => _examSchedules;
+  bool get isLoadingExamSchedule => _isLoadingExamSchedule;
+  String? get examScheduleError => _examScheduleError;
+
   List<AnnouncementItem> get announcements => _announcements;
   bool get isLoadingAnnouncements => _isLoadingAnnouncements;
   String? get announcementsError => _announcementsError;
@@ -146,6 +179,14 @@ class StudentProvider extends ChangeNotifier {
   List<WorksheetItem> get worksheets => _worksheets;
   bool get isLoadingWorksheets => _isLoadingWorksheets;
   String? get worksheetsError => _worksheetsError;
+
+  List<CurriculumItem> get curriculum => _curriculum;
+  bool get isLoadingCurriculum => _isLoadingCurriculum;
+  String? get curriculumError => _curriculumError;
+
+  List<GalleryAlbum> get galleryAlbums => _galleryAlbums;
+  bool get isLoadingGallery => _isLoadingGallery;
+  String? get galleryError => _galleryError;
 
   GradeReport? get gradeReport => _gradeReport;
   bool get isLoadingGradeReport => _isLoadingGradeReport;
@@ -226,6 +267,16 @@ class StudentProvider extends ChangeNotifier {
     return list;
   }
 
+  /// 🆕 تسكّر جلسة "وقت فتح الصفحة" الحالية وتبعت مدتها للسيرفر — تُنادى
+  /// من main.dart لما يطلع التطبيق للخلفية (AppLifecycleState.paused)
+  /// أو يُقفل، حتى ما تضيع آخر جلسة مفتوحة بدون ما تنسجل.
+  void endActiveViewSession() => _activity.endViewSession();
+
+  /// 🆕 يبلش جلسة "وقت فتح الصفحة" من الخارج (main.dart) — تُستخدم لما
+  /// التطبيق يرجع من الخلفية للواجهة الأمامية (resumed) حتى يستمر عدّ
+  /// الوقت لنفس الحساب النشط هلق.
+  void startViewSessionExternally(int studentId) => _activity.startViewSession(studentId);
+
   Future<void> _ensureToken() async {
     final token = await _auth.getToken();
     if (token == null) throw ApiException('غير موثّق، يرجى تسجيل الدخول', code: 'NOT_AUTHENTICATED');
@@ -259,6 +310,9 @@ class StudentProvider extends ChangeNotifier {
         for (final s in siblingsData) s.studentId: s.gender,
       };
       _error = null;
+
+      // 🆕 بلش جلسة "وقت فتح الصفحة" للحساب الأساسي (نفس صاحب التوكن).
+      _activity.startViewSession(studentData.studentId);
     } catch (e) {
       _error = e is ApiException ? e.message : e.toString();
     } finally {
@@ -314,6 +368,11 @@ class StudentProvider extends ChangeNotifier {
       _activeStudentId = sibling.studentId;
       _error = null;
 
+      // 🆕 نسكّر جلسة "وقت فتح الصفحة" للحساب السابق ونبلش وحدة جديدة
+      // لصفحة الأخ الجديد — هيك المدير بيشوف بالضبط قديش قعد الأب/الأم
+      // على صفحة كل أخ (شرط رقم 3 من طلبك).
+      _activity.startViewSession(sibling.studentId);
+
       // نفرّغ غياب/درجات/واجبات الحساب السابق حتى ما تظهر لحظياً لحساب
       // الأخ الجديد قبل ما ينعاد تحميلها فعلياً من كل شاشة. الإشعارات
       // مش منفرّغها — محفوظة أصلاً بخريطة خاصة بكل حساب، فبتضل ظاهرة
@@ -322,6 +381,10 @@ class StudentProvider extends ChangeNotifier {
       _absenceStats = AbsenceStats.empty();
       _homework = [];
       _homeworkError = null;
+      _exams = [];
+      _examsError = null;
+      _examSchedules = [];
+      _examScheduleError = null;
       _gradeReport = null;
       _selectedAcademicYearId = null;
       _behaviorNotes = [];
@@ -329,6 +392,10 @@ class StudentProvider extends ChangeNotifier {
       _behaviorNotesError = null;
       _worksheets = [];
       _worksheetsError = null;
+      _curriculum = [];
+      _curriculumError = null;
+      _galleryAlbums = [];
+      _galleryError = null;
     } catch (e) {
       _error = e is ApiException ? e.message : e.toString();
     } finally {
@@ -446,6 +513,7 @@ class StudentProvider extends ChangeNotifier {
       final result = await _api.fetchAbsences(targetStudentId: _activeStudentId);
       _absences = result.items;
       _absenceStats = result.stats;
+      _activity.logScreenView('view_absence', studentId: _activeStudentId ?? _primaryStudentId);
     } catch (e) {
       // نسيب القائمة القديمة
     } finally {
@@ -464,6 +532,7 @@ class StudentProvider extends ChangeNotifier {
     try {
       await _ensureToken();
       _finance = await _api.fetchStudentFinance(targetStudentId: _activeStudentId);
+      _activity.logScreenView('view_finance', studentId: _activeStudentId ?? _primaryStudentId);
     } catch (e) {
       _financeError = e is ApiException ? e.message : 'تعذر جلب الحالة المالية';
     } finally {
@@ -485,6 +554,7 @@ class StudentProvider extends ChangeNotifier {
       _behaviorNotes = result.items;
       _behaviorNoteStats = result.stats;
       _behaviorNotesError = null;
+      _activity.logScreenView('view_behavior_notes', studentId: _activeStudentId ?? _primaryStudentId);
     } catch (e) {
       _behaviorNotesError = e is ApiException ? e.message : e.toString();
     } finally {
@@ -504,10 +574,50 @@ class StudentProvider extends ChangeNotifier {
       await _ensureToken();
       _worksheets = await _api.fetchWorksheets(targetStudentId: _activeStudentId);
       _worksheetsError = null;
+      _activity.logScreenView('view_worksheets', studentId: _activeStudentId ?? _primaryStudentId);
     } catch (e) {
       _worksheetsError = e is ApiException ? e.message : e.toString();
     } finally {
       _isLoadingWorksheets = false;
+      notifyListeners();
+    }
+  }
+
+  /// 🆕 جلب ملفات المنهاج الرسمي (PDF) الخاصة بصف الحساب النشط حالياً
+  /// — نفس نمط fetchWorksheets بالضبط.
+  Future<void> fetchCurriculum() async {
+    _isLoadingCurriculum = true;
+    _curriculumError = null;
+    notifyListeners();
+
+    try {
+      await _ensureToken();
+      _curriculum = await _api.fetchCurriculum(targetStudentId: _activeStudentId);
+      _curriculumError = null;
+      _activity.logScreenView('view_curriculum', studentId: _activeStudentId ?? _primaryStudentId);
+    } catch (e) {
+      _curriculumError = e is ApiException ? e.message : e.toString();
+    } finally {
+      _isLoadingCurriculum = false;
+      notifyListeners();
+    }
+  }
+
+  /// 🆕 جلب قائمة ألبومات المعرض المتاحة لصف وشعبة الحساب النشط
+  /// حالياً — نفس نمط fetchWorksheets بالضبط.
+  Future<void> fetchGalleryAlbums() async {
+    _isLoadingGallery = true;
+    _galleryError = null;
+    notifyListeners();
+
+    try {
+      await _ensureToken();
+      _galleryAlbums = await _api.fetchGalleryAlbums(targetStudentId: _activeStudentId);
+      _galleryError = null;
+    } catch (e) {
+      _galleryError = e is ApiException ? e.message : e.toString();
+    } finally {
+      _isLoadingGallery = false;
       notifyListeners();
     }
   }
@@ -523,10 +633,53 @@ class StudentProvider extends ChangeNotifier {
       await _ensureToken();
       _homework = await _api.fetchHomework(targetStudentId: _activeStudentId);
       _homeworkError = null;
+      _activity.logScreenView('view_homework', studentId: _activeStudentId ?? _primaryStudentId);
     } catch (e) {
       _homeworkError = e is ApiException ? e.message : e.toString();
     } finally {
       _isLoadingHomework = false;
+      notifyListeners();
+    }
+  }
+
+  /// 🆕 جلب اختبارات ("سبر") الحساب النشط حالياً — نفس نمط fetchHomework
+  /// بالضبط. كل عنصر إما فيه علامة مصدّرة (isReleased == true) أو
+  /// لسا بانتظار ما يدخّل المشرف العلامة.
+  Future<void> fetchExams() async {
+    _isLoadingExams = true;
+    _examsError = null;
+    notifyListeners();
+
+    try {
+      await _ensureToken();
+      _exams = await _api.fetchExams(targetStudentId: _activeStudentId);
+      _examsError = null;
+      _activity.logScreenView('view_exams', studentId: _activeStudentId ?? _primaryStudentId);
+    } catch (e) {
+      _examsError = e is ApiException ? e.message : e.toString();
+    } finally {
+      _isLoadingExams = false;
+      notifyListeners();
+    }
+  }
+
+  /// 🆕 جلب "البرنامج الامتحاني" الرسمي (تبويبة "الامتحانات" —
+  /// منفصلة عن fetchExams يلي بيعرض نتائج السبر/التسميع) للحساب
+  /// النشط حالياً — نفس نمط fetchExams بالضبط.
+  Future<void> fetchExamSchedule() async {
+    _isLoadingExamSchedule = true;
+    _examScheduleError = null;
+    notifyListeners();
+
+    try {
+      await _ensureToken();
+      _examSchedules = await _api.fetchExamSchedule(targetStudentId: _activeStudentId);
+      _examScheduleError = null;
+      _activity.logScreenView('view_exams', studentId: _activeStudentId ?? _primaryStudentId);
+    } catch (e) {
+      _examScheduleError = e is ApiException ? e.message : e.toString();
+    } finally {
+      _isLoadingExamSchedule = false;
       notifyListeners();
     }
   }
@@ -542,6 +695,7 @@ class StudentProvider extends ChangeNotifier {
       await _ensureToken();
       _announcements = await _api.fetchAnnouncements(targetStudentId: _activeStudentId);
       _announcementsError = null;
+      _activity.logScreenView('view_announcements', studentId: _activeStudentId ?? _primaryStudentId);
     } catch (e) {
       _announcementsError = e is ApiException ? e.message : e.toString();
     } finally {
@@ -687,6 +841,11 @@ class StudentProvider extends ChangeNotifier {
 
   /// تسجيل الخروج
   Future<void> logout() async {
+    // 🆕 نسكّر أي جلسة "وقت فتح صفحة" مفتوحة ونبعت مدتها قبل ما نمسح
+    // التوكن، ونفضي الكاش المحلي حتى ما يضل حساب سابق شايف بيانات
+    // محفوظة لحساب غيره لو تسجل حدا تاني عنفس الجهاز.
+    _activity.endViewSession();
+    unawaited(_api.clearCache());
     await _auth.deleteToken();
     _api.clearToken();
     _student = null;
@@ -704,6 +863,10 @@ class StudentProvider extends ChangeNotifier {
     _financeError = null;
     _homework = [];
     _homeworkError = null;
+    _exams = [];
+    _examsError = null;
+    _examSchedules = [];
+    _examScheduleError = null;
     _announcements = [];
     _announcementsError = null;
     _calendarEvents = [];
@@ -713,6 +876,10 @@ class StudentProvider extends ChangeNotifier {
     _behaviorNotesError = null;
     _worksheets = [];
     _worksheetsError = null;
+    _curriculum = [];
+    _curriculumError = null;
+    _galleryAlbums = [];
+    _galleryError = null;
     _gradeReport = null;
     _selectedAcademicYearId = null;
     _unreadMessages = 0;

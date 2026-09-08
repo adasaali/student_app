@@ -8,7 +8,11 @@ plugins {
 
 android {
     namespace = "com.example.student_app"
-    compileSdk = flutter.compileSdkVersion
+    // 🆕 file_picker (عبر flutter_plugin_android_lifecycle) بيتطلب compileSdk
+    // 36 أو أعلى — flutter.compileSdkVersion الافتراضي كان 34 وسبب فشل البناء
+    // (checkReleaseAarMetadata). ثابتة يدوياً هون بدل الاعتماد على قيمة Flutter
+    // الافتراضية، وبنفس المنطق targetSdk رفعناها معها (نفس توصية رسالة الخطأ).
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -24,7 +28,7 @@ android {
         applicationId = "com.academyschool.student" // أو أي اسم اخترته        // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        targetSdk = 36 // 🆕 رفعناها مع compileSdk (نفس التوصية برسالة خطأ file_picker)
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }

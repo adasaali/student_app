@@ -7,6 +7,7 @@ import 'providers/student_provider.dart';
 import 'services/auth_service.dart';
 import 'services/api_service.dart';
 import 'services/notification_service.dart';
+import 'services/local_cache_service.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_shell.dart';
 import 'theme/app_theme.dart';
@@ -62,6 +63,9 @@ class StudentApp extends StatelessWidget {
     // (فاضي)، فأي شاشة غير StudentProvider كانت رح تفشل بـ
     // NOT_AUTHENTICATED حتى لو المستخدم مسجّل دخول فعلياً.
     final apiService = ApiService();
+    // 🆕 وضع الأوف لاين: أي بيانات تنجلب لاحقاً من GET endpoints بتتخزن
+    // هون تلقائياً، وبترجع نفسها لو ما كان في اتصال أو فشل الطلب.
+    apiService.attachCache(LocalCacheService());
     final notificationService = NotificationService(apiService);
 
     return MultiProvider(
@@ -111,7 +115,7 @@ class StartupGate extends StatefulWidget {
   State<StartupGate> createState() => _StartupGateState();
 }
 
-class _StartupGateState extends State<StartupGate> {
+class _StartupGateState extends State<StartupGate> with WidgetsBindingObserver {
   // 🔧 قبل هيك كان _checked بس بيتحقق من تسجيل الدخول (auto-login) وبعدها
   // بيفتح HomeShell فوراً — وHomeShell كانت هي يلي بتجيب بيانات الطالب
   // والإشعارات بالخلفية (initState)، فالمستخدم كان يشوف الواجهة وهي لسا
@@ -129,7 +133,33 @@ class _StartupGateState extends State<StartupGate> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this); // 🆕 لمراقبة دخول/خروج التطبيق للخلفية
     _init();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  // 🆕 لما التطبيق يروح للخلفية أو يتقفل، نسكّر جلسة "وقت فتح الصفحة"
+  // الحالية (لو موجودة) ونبعت مدتها — حتى ما تضيع آخر جلسة مفتوحة.
+  // ولما يرجع للواجهة الأمامية (resumed)، منبلش جلسة جديدة لنفس الحساب
+  // النشط هلق (لو المستخدم مسجل دخول أصلاً).
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!mounted) return;
+    final auth = context.read<AuthService>();
+    if (!auth.isLoggedIn) return;
+
+    final provider = context.read<StudentProvider>();
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+      provider.endActiveViewSession();
+    } else if (state == AppLifecycleState.resumed) {
+      final activeId = provider.activeStudentId ?? provider.primaryStudentId;
+      if (activeId != null) provider.startViewSessionExternally(activeId);
+    }
   }
 
   Future<void> _init() async {

@@ -3,12 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../services/notification_service.dart';
 import '../providers/student_provider.dart';
 import '../theme/app_colors.dart';
 import 'home_shell.dart';
+import 'change_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -88,6 +90,21 @@ class _LoginScreenState extends State<LoginScreen>
 
   void _onFocusChange() => setState(() {});
 
+  /// يفتح محادثة واتساب مباشرة على رقم الدعم.
+  /// يُستخدم لأزرار "نسيت كلمة المرور؟"، "تواصل معنا"، و"المساعدة".
+  Future<void> _openWhatsAppSupport() async {
+    const phone = '963933950222'; // بدون + وبدون أصفار داخلية
+    final uri = Uri.parse('https://wa.me/$phone');
+
+    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+
+    if (!launched && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر فتح واتساب، تأكد من تثبيت التطبيق')),
+      );
+    }
+  }
+
   @override
   void dispose() {
     _usernameController.dispose();
@@ -140,6 +157,19 @@ class _LoginScreenState extends State<LoginScreen>
           context.read<NotificationService>().init(
             studentProvider: context.read<StudentProvider>(),
           );
+        }
+
+        // 🆕 لسا داخل بكلمة السر الافتراضية (رقم هاتف الأب/الأم)؟ منوجّهه
+        // إجبارياً لشاشة تغيير كلمة السر قبل أي شي تاني بالتطبيق.
+        if (result['must_change_password'] == true) {
+          setState(() => _success = true);
+          await Future.delayed(const Duration(milliseconds: 500));
+          if (!mounted) return;
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const ChangePasswordScreen()),
+          );
+          return;
         }
 
         final studentProvider = context.read<StudentProvider>();
@@ -534,7 +564,7 @@ class _LoginScreenState extends State<LoginScreen>
             child: Padding(
               padding: const EdgeInsets.only(top: 14),
               child: TextButton(
-                onPressed: () {},
+                onPressed: _openWhatsAppSupport,
                 style: TextButton.styleFrom(
                   padding: EdgeInsets.zero,
                   minimumSize: Size.zero,
@@ -740,7 +770,7 @@ class _LoginScreenState extends State<LoginScreen>
           child: _QuickButton(
             icon: Icons.chat_bubble_outline,
             label: 'تواصل معنا',
-            onTap: () {},
+            onTap: _openWhatsAppSupport,
           ),
         ),
         const SizedBox(width: 12),
@@ -748,7 +778,7 @@ class _LoginScreenState extends State<LoginScreen>
           child: _QuickButton(
             icon: Icons.help_outline,
             label: 'المساعدة',
-            onTap: () {},
+            onTap: _openWhatsAppSupport,
           ),
         ),
       ],

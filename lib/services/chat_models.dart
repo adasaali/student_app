@@ -65,6 +65,28 @@ class ChatConversation {
   }
 }
 
+/// 🆕 مرفق رسالة شات واحد (اختياري) — صورة/فيديو/صوت/PDF/Word/أي ملف.
+class ChatAttachment {
+  final String fileName;
+  final String fileUrl;
+  final String? mimeType;
+  final int? fileSize;
+
+  ChatAttachment({required this.fileName, required this.fileUrl, this.mimeType, this.fileSize});
+
+  static ChatAttachment? fromJson(dynamic j) {
+    if (j == null || j is! Map) return null;
+    final url = j['file_url']?.toString();
+    if (url == null || url.isEmpty) return null;
+    return ChatAttachment(
+      fileName: j['file_name']?.toString() ?? 'ملف',
+      fileUrl: url,
+      mimeType: j['mime_type']?.toString(),
+      fileSize: j['file_size'] is int ? j['file_size'] as int : int.tryParse('${j['file_size']}'),
+    );
+  }
+}
+
 class ChatMessage {
   final int id;
   final String senderType; // 'supervisor' | 'student'
@@ -72,6 +94,7 @@ class ChatMessage {
   final String senderName;
   final String text;
   final DateTime? createdAt;
+  final ChatAttachment? attachment; // 🆕
   // 🔧 حالة القراءة الحقيقية من السيرفر (مبنية على chat_reads):
   // true = الطرف التاني قرأها، false = لسا مو مقروءة، null = محادثة
   // جماعية (ما في "قارئ واحد" نقارن فيه، فما منعرض شيكة قراءة أصلاً).
@@ -84,6 +107,7 @@ class ChatMessage {
     required this.senderName,
     required this.text,
     required this.createdAt,
+    this.attachment,
     this.isRead,
   });
 
@@ -95,6 +119,7 @@ class ChatMessage {
       senderName: j['sender_name'] as String? ?? '',
       text: j['text'] as String? ?? '',
       createdAt: j['created_at'] == null ? null : DateTime.tryParse(j['created_at'].toString()),
+      attachment: ChatAttachment.fromJson(j['attachment']),
       isRead: j['is_read'] as bool?,
     );
   }

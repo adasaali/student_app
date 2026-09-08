@@ -1,9 +1,13 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../services/chat_models.dart';
 import '../services/chat_service.dart';
 import '../theme/chat_theme.dart';
 import '../theme/sibling_palette.dart';
+import '../widgets/attachment_chip.dart';
+import '../widgets/attachment_picker_sheet.dart';
 
 const List<String> _arabicMonths = [
   'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
@@ -145,6 +149,36 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  // 🆕 اختيار مرفق (صورة/فيديو/تسجيل صوتي/ملف) وإرساله مباشرة.
+  Future<void> _pickAndSendAttachment() async {
+    if (_sending || !_canSend) return;
+    final picked = await showAttachmentPickerSheet(context);
+    if (picked == null || !mounted) return;
+    setState(() => _sending = true);
+    try {
+      await widget.chatService.sendMessage(
+        conversationId: _conversation.id,
+        text: '',
+        targetStudentId: widget.targetStudentId,
+        attachmentFile: picked.file,
+      );
+    } catch (e) {
+      if (mounted) {
+        final reason = e is ApiException ? e.message : e.toString();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: ChatTheme.danger,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            content: Text('تعذّر إرسال المرفق: $reason', style: ChatTheme.body(color: Colors.white, weight: FontWeight.w700)),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isGroup = _conversation.type == ConversationType.group;
@@ -277,6 +311,7 @@ class _ChatScreenState extends State<ChatScreen> {
               sending: _sending,
               onSend: _send,
               onEmoji: _insertEmoji,
+              onAttach: _pickAndSendAttachment,
               palette: _palette,
             )
           else
@@ -442,10 +477,24 @@ class _MessageBubble extends StatelessWidget {
                 style: ChatTheme.body(size: 11, weight: FontWeight.w800, color: palette.primaryDark),
               ),
             ),
-          Text(
-            message.text,
-            style: ChatTheme.body(size: 13.5, color: mine ? Colors.white : ChatTheme.ink, height: 1.45),
-          ),
+          if (message.attachment != null)
+            Padding(
+              padding: EdgeInsets.only(bottom: message.text.trim().isEmpty ? 0 : 6),
+              child: AttachmentChip(
+                fileUrl: message.attachment!.fileUrl,
+                fileName: message.attachment!.fileName,
+                mimeType: message.attachment!.mimeType,
+                fileSize: message.attachment!.fileSize,
+                dense: true,
+                mine: mine,
+                accentColor: palette.primaryDark,
+              ),
+            ),
+          if (message.text.trim().isNotEmpty)
+            Text(
+              message.text,
+              style: ChatTheme.body(size: 13.5, color: mine ? Colors.white : ChatTheme.ink, height: 1.45),
+            ),
           const SizedBox(height: 4),
           Row(
             mainAxisSize: MainAxisSize.min,
@@ -513,12 +562,14 @@ class _ComposerBar extends StatefulWidget {
   final bool sending;
   final VoidCallback onSend;
   final ValueChanged<String> onEmoji;
+  final VoidCallback onAttach;
   final SiblingPalette palette;
   const _ComposerBar({
     required this.controller,
     required this.sending,
     required this.onSend,
     required this.onEmoji,
+    required this.onAttach,
     required this.palette,
   });
 
@@ -580,6 +631,10 @@ class _ComposerBarState extends State<_ComposerBar> {
                   size: 22,
                 ),
               ),
+              IconButton(
+                onPressed: widget.sending ? null : widget.onAttach,
+                icon: Icon(Icons.attach_file_rounded, color: ChatTheme.inkMuted, size: 22),
+              ),
               Expanded(
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -627,4 +682,4 @@ class _ComposerBarState extends State<_ComposerBar> {
       ),
     );
   }
-}  
+}

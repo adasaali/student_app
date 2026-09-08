@@ -28,6 +28,7 @@ import 'login_screen.dart';
 import 'school_calendar_screen.dart';
 import 'curriculum_screen.dart';
 import 'worksheets_screen.dart';
+import '../config/feature_flags.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
@@ -43,9 +44,22 @@ class _HomeShellState extends State<HomeShell> {
     const HomeScreen(),
     const WeeklyScheduleScreen(),
     const ProfileScreen(),
-    const GradesReportsScreen(),
+    if (FeatureFlags.showGrades) const GradesReportsScreen(),
     const StudentNotesScreen(),
+    const HomeworkScreen(),
   ];
+
+  // 🆕 لمّا واجهة الدرجات مقفولة (FeatureFlags.showGrades = false)، بيصير
+  // تبويب "الملاحظات" بموقع index 3 بدل 4 (لأنه انشال تبويب الدرجات من
+  // النص). هالـ getters بترجع الـ index الصحيح ديناميكياً بدل ما نحطه
+  // ثابت بكل مكان — هيك أي مكان بالكود بيرجع يشتغل صح تلقائياً لو
+  // فعّلنا أو عطّلنا الفلاغ لاحقاً.
+  int? get _gradesIndex => FeatureFlags.showGrades ? 3 : null;
+  int get _notesIndex => FeatureFlags.showGrades ? 4 : 3;
+  // 🆕 تبويب "الواجبات" الجديد بالشريط السفلي — دايماً آخر عنصر
+  // بـ _screens (بعد الملاحظات مباشرة)، فموقعه هو _notesIndex + 1
+  // بغض النظر عن حالة FeatureFlags.showGrades.
+  int get _homeworkIndex => _notesIndex + 1;
 
   @override
   void initState() {
@@ -439,11 +453,12 @@ class _HomeShellState extends State<HomeShell> {
                   padding: EdgeInsets.zero,
                   children: [
                     _DrawerItem(icon: Icons.calendar_month_rounded, label: 'البرنامج الأسبوعي', onTap: () { Navigator.pop(context); _onTap(1); }),
-                    _DrawerItem(icon: Icons.edit_note_rounded, label: 'الواجبات', onTap: () { Navigator.pop(context); _push(const HomeworkScreen()); }),
+                    _DrawerItem(icon: Icons.edit_note_rounded, label: 'الواجبات', onTap: () { Navigator.pop(context); _onTap(_homeworkIndex); }),
                     _DrawerItem(icon: Icons.fact_check_rounded, label: 'الاختبارات', onTap: () { Navigator.pop(context); _push(const ExamsScreen()); }),
                     _DrawerItem(icon: Icons.event_busy_rounded, label: 'الغياب', onTap: () { Navigator.pop(context); _push(const AbsenceScreen()); }),
-                    _DrawerItem(icon: Icons.account_balance_wallet_rounded, label: 'المالية', onTap: () { Navigator.pop(context); _push(const FinanceScreen()); }),
-                    _DrawerItem(icon: Icons.note_alt_rounded, label: 'ملاحظات الطالب', onTap: () { Navigator.pop(context); _onTap(4); }),
+                    if (FeatureFlags.showFinance)
+                      _DrawerItem(icon: Icons.account_balance_wallet_rounded, label: 'المالية', onTap: () { Navigator.pop(context); _push(const FinanceScreen()); }),
+                    _DrawerItem(icon: Icons.note_alt_rounded, label: 'ملاحظات الطالب', onTap: () { Navigator.pop(context); _onTap(_notesIndex); }),
                     _DrawerItem(icon: Icons.event_available_rounded, label: 'التقويم المدرسي', onTap: () { Navigator.pop(context); _push(const SchoolCalendarScreen()); }),
                     _DrawerItem(icon: Icons.menu_book_rounded, label: 'المنهاج الرسمي', onTap: () { Navigator.pop(context); _push(const CurriculumScreen()); }),
                     _DrawerItem(icon: Icons.description_rounded, label: 'أوراق العمل', onTap: () { Navigator.pop(context); _push(const WorksheetsScreen()); }),
@@ -457,7 +472,8 @@ class _HomeShellState extends State<HomeShell> {
                       ),
                     ),
                     _DrawerItem(icon: Icons.settings_outlined, label: 'الإعدادات', onTap: () { Navigator.pop(context); _push(const SettingsScreen()); }),
-                    _DrawerItem(icon: Icons.assessment_rounded, label: 'الدرجات والتقارير', onTap: () { Navigator.pop(context); _onTap(3); }),
+                    if (FeatureFlags.showGrades)
+                      _DrawerItem(icon: Icons.assessment_rounded, label: 'الدرجات والتقارير', onTap: () { Navigator.pop(context); _onTap(_gradesIndex!); }),
                   ],
                 ),
               ),
@@ -528,8 +544,10 @@ class _HomeShellState extends State<HomeShell> {
                     Expanded(child: _NavItem(icon: Icons.calendar_month_rounded, label: 'البرنامج', isActive: _currentIndex == 1, activeColor: palette['primaryDark']!, onTap: () => _onTap(1))),
                     Expanded(child: _NavItem(icon: Icons.badge_rounded, label: 'الملف', isActive: _currentIndex == 2, activeColor: palette['primaryDark']!, onTap: () => _onTap(2))),
                     const SizedBox(width: 70),
-                    Expanded(child: _NavItem(icon: Icons.assessment_rounded, label: 'الدرجات', isActive: _currentIndex == 3, activeColor: palette['primaryDark']!, onTap: () => _onTap(3))),
-                    Expanded(child: _NavItem(icon: Icons.note_alt_rounded, label: 'الملاحظات', isActive: _currentIndex == 4, activeColor: palette['primaryDark']!, onTap: () => _onTap(4))),
+                    if (FeatureFlags.showGrades)
+                      Expanded(child: _NavItem(icon: Icons.assessment_rounded, label: 'الدرجات', isActive: _currentIndex == _gradesIndex, activeColor: palette['primaryDark']!, onTap: () => _onTap(_gradesIndex!))),
+                    Expanded(child: _NavItem(icon: Icons.note_alt_rounded, label: 'الملاحظات', isActive: _currentIndex == _notesIndex, activeColor: palette['primaryDark']!, onTap: () => _onTap(_notesIndex))),
+                    Expanded(child: _NavItem(icon: Icons.edit_note_rounded, label: 'الواجبات', isActive: _currentIndex == _homeworkIndex, activeColor: palette['primaryDark']!, onTap: () => _onTap(_homeworkIndex))),
                   ],
                 ),
               ),

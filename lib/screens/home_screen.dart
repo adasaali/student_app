@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -9,6 +10,7 @@ import '../theme/app_colors.dart';
 import '../theme/sibling_palette.dart';
 import '../widgets/home_loading_skeleton.dart';
 import '../widgets/no_connection_screen.dart';
+import '../config/feature_flags.dart';
 
 // استيراد الشاشات
 import 'weekly_schedule_screen.dart';
@@ -160,22 +162,24 @@ class _HomeScreenState extends State<HomeScreen> {
             (_) => const ExamScheduleScreen(),
         notificationTypes: const ['exam_schedule'],
       ),
-      _QuickAction(
-        'الدرجات',
-        Icons.insights_rounded,
-        const Color(0xFF0D9488),
-        const Color(0xFFF0FDFA),
-            (_) => const SectionScaffold(title: 'الدرجات والتقارير', body: GradesReportsScreen()),
-        notificationTypes: const ['grade', 'grades'],
-      ),
-      _QuickAction(
-        'المالية',
-        Icons.account_balance_wallet_rounded,
-        const Color(0xFFD97706),
-        const Color(0xFFFFFBEB),
-            (_) => const FinanceScreen(),
-        notificationTypes: const ['finance'],
-      ),
+      if (FeatureFlags.showGrades)
+        _QuickAction(
+          'الدرجات',
+          Icons.insights_rounded,
+          const Color(0xFF0D9488),
+          const Color(0xFFF0FDFA),
+              (_) => const SectionScaffold(title: 'الدرجات والتقارير', body: GradesReportsScreen()),
+          notificationTypes: const ['grade', 'grades'],
+        ),
+      if (FeatureFlags.showFinance)
+        _QuickAction(
+          'المالية',
+          Icons.account_balance_wallet_rounded,
+          const Color(0xFFD97706),
+          const Color(0xFFFFFBEB),
+              (_) => const FinanceScreen(),
+          notificationTypes: const ['finance'],
+        ),
       _QuickAction(
         'المعرض',
         Icons.photo_library_rounded,
@@ -192,14 +196,15 @@ class _HomeScreenState extends State<HomeScreen> {
             (_) => const SchoolCalendarScreen(),
         notificationTypes: const ['school_calendar', 'calendar'],
       ),
-      _QuickAction(
-        'النقل',
-        Icons.directions_bus_rounded,
-        const Color(0xFFEA580C),
-        const Color(0xFFFFF7ED),
-            (_) => const TransportationScreen(),
-        notificationTypes: const ['transportation'],
-      ),
+      if (FeatureFlags.showTransportation)
+        _QuickAction(
+          'النقل',
+          Icons.directions_bus_rounded,
+          const Color(0xFFEA580C),
+          const Color(0xFFFFF7ED),
+              (_) => const TransportationScreen(),
+          notificationTypes: const ['transportation'],
+        ),
     ];
 
     // 🔔 أولوية للبلاطات اللي عندها إشعارات غير مقروءة: بتترتّب فوق
@@ -219,6 +224,13 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // 0. تقييم الطالب (5 نجوم) — 🆕 مبدئياً ثابت 5/5 لكل الطلاب
+          // (لسا ما في نظام تقييم حقيقي مربوط بالسيرفر؛ لما يتوفر لاحقاً
+          // منقدر نستبدل الرقم الثابت هون بقيمة جاي من StudentProvider).
+          _buildRatingCard(goldColor),
+
+          const SizedBox(height: 16),
+
           // 1. قسم المهام الأساسية (البطاقات الملونة الحيوية)
           Row(
             children: [
@@ -421,6 +433,77 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // 🆕 بطاقة تقييم الطالب — 5 نجوم ذهبية، مبدئياً ثابتة (5/5) لكل الطلاب.
+  //
+  // ⚠️ مهم: النجوم هون مرسومة يدوياً (CustomPaint) بدل استخدام أيقونة
+  // جاهزة من خط الأيقونات (Icons.star). السبب: أيقونات Flutter بتنعمل
+  // إلها "tree-shaking" وقت أول release — يعني بينحذف من ملف الخط أي
+  // أيقونة مش مستخدمة بالكود وقتها. لو استخدمنا Icons.star بعد الـ
+  // release الأول، رح تظهر مربعات فاضية عند الأهالي لأنه الـ patch
+  // بيحدّث الكود بس مش ملفات الخطوط. الرسم اليدوي هون بيتجنّب المشكلة
+  // نهائياً — بيشتغل بأي patch مستقبلي بدون قلق.
+  Widget _buildRatingCard(Color goldColor) {
+    const int rating = 5; // ثابت حالياً — لسا ما في مصدر بيانات حقيقي للتقييم.
+    const int maxRating = 5;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: goldColor.withOpacity(0.12),
+            blurRadius: 16,
+            spreadRadius: -2,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: goldColor.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: _StarShape(size: 22, filled: true, color: goldColor),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'تقييم الطالب',
+                  style: GoogleFonts.cairo(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF1E293B),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: List.generate(
+                    maxRating,
+                        (i) => Padding(
+                      padding: const EdgeInsets.only(left: 3),
+                      child: _StarShape(size: 18, filled: i < rating, color: goldColor),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   // مربعات الشبكة المميزة لونياً بذكاء لتسهيل التمييز دون الإضرار بالجمالية
   Widget _buildDistinctiveGridTile(BuildContext context, _QuickAction action) {
     // 🔔 عدد إشعارات هالبلاطة تحديداً — context.watch هون بيعمل rebuild
@@ -532,4 +615,70 @@ class _QuickAction {
       this.screenBuilder, {
         this.notificationTypes = const [],
       });
+}
+
+/// 🆕 شكل نجمة مرسوم يدوياً (بدون الاعتماد على أي أيقونة جاهزة من خط
+/// الأيقونات) — يستخدمه [_HomeScreenState._buildRatingCard]. مرسومة
+/// كـ Path هندسي بسيط (5 رؤوس خارجية + 5 رؤوس داخلية بالتناوب)،
+/// فمضمون تظهر صح مهما كان الأيقونات المستخدمة فعلياً بباقي الكود وقت
+/// آخر release (شوف الشرح المفصّل فوق _buildRatingCard).
+class _StarShape extends StatelessWidget {
+  final double size;
+  final bool filled;
+  final Color color;
+
+  const _StarShape({required this.size, required this.filled, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      size: Size(size, size),
+      painter: _StarPainter(filled: filled, color: color),
+    );
+  }
+}
+
+class _StarPainter extends CustomPainter {
+  final bool filled;
+  final Color color;
+
+  _StarPainter({required this.filled, required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final path = Path();
+    final center = Offset(size.width / 2, size.height / 2);
+    final outerRadius = size.width / 2;
+    final innerRadius = outerRadius * 0.42;
+
+    for (int i = 0; i < 5; i++) {
+      final outerAngle = -math.pi / 2 + i * 2 * math.pi / 5;
+      final innerAngle = outerAngle + math.pi / 5;
+
+      final outerPoint = center + Offset(math.cos(outerAngle), math.sin(outerAngle)) * outerRadius;
+      final innerPoint = center + Offset(math.cos(innerAngle), math.sin(innerAngle)) * innerRadius;
+
+      if (i == 0) {
+        path.moveTo(outerPoint.dx, outerPoint.dy);
+      } else {
+        path.lineTo(outerPoint.dx, outerPoint.dy);
+      }
+      path.lineTo(innerPoint.dx, innerPoint.dy);
+    }
+    path.close();
+
+    final paint = Paint()..color = color;
+    if (filled) {
+      paint.style = PaintingStyle.fill;
+    } else {
+      paint.style = PaintingStyle.stroke;
+      paint.strokeWidth = 1.6;
+      paint.strokeJoin = StrokeJoin.round;
+    }
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _StarPainter oldDelegate) =>
+      oldDelegate.filled != filled || oldDelegate.color != color;
 }

@@ -16,6 +16,7 @@ import 'announcements_screen.dart';
 import 'exam_schedule_screen.dart';
 import 'gallery_screen.dart';
 import 'transportation_screen.dart';
+import '../config/feature_flags.dart';
 
 /// الإشعارات — تُفتح من جرس الإشعارات بأعلى الـ HomeShell أو من الدرج.
 /// بتعرض إشعارات كل الحسابات (الطالب الأساسي + كل إخوته) سوا بقائمة
@@ -73,10 +74,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       case 'exam_schedule':
         return const ExamScheduleScreen();
       case 'finance':
-        return const FinanceScreen();
+        return FeatureFlags.showFinance ? const FinanceScreen() : null;
       case 'grade':
       case 'grades':
-        return const SectionScaffold(title: 'الدرجات والتقارير', body: GradesReportsScreen());
+        return FeatureFlags.showGrades
+            ? const SectionScaffold(title: 'الدرجات والتقارير', body: GradesReportsScreen())
+            : null;
       case 'note':
       case 'student_note':
       case 'behavior_note':
@@ -86,7 +89,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       case 'gallery':
         return const GalleryScreen();
       case 'transportation':
-        return const TransportationScreen();
+        return FeatureFlags.showTransportation ? const TransportationScreen() : null;
       default:
         return null; // إعلان عام غير مصنّف — يضل ضمن شاشة الإشعارات نفسها
     }
