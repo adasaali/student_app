@@ -24,11 +24,13 @@
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>NSCameraUsageDescription</key>
-	<string>يحتاج التطبيق للوصول للكاميرا لتطبيق الفلتر على الصور أو الفيديو.</string>
+	<string>يحتاج التطبيق للوصول للكاميرا لالتقاط صور وإرفاقها في المحادثة.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>يحتاج التطبيق للوصول لمكتبة الصور لحفظ أو اختيار الصور.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>يحتاج التطبيق لحفظ الصور المعدّلة في مكتبة الصور.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>لا يستخدم هذا التطبيق بيانات الموقع الجغرافي حاليًا.</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>
