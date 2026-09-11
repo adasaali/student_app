@@ -9,6 +9,7 @@ import '../providers/student_provider.dart';
 import '../services/api_service.dart';
 import '../theme/app_colors.dart';
 import '../widgets/placeholder_screen.dart';
+import '../widgets/linkified_text.dart';
 
 /// الإعلانات — أخبار وإعلانات إدارة المدرسة، تُفتح من الشاشة الرئيسية.
 ///
@@ -179,7 +180,7 @@ class _AnnouncementCard extends StatelessWidget {
           if (item.content != null)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: Text(
+              child: LinkifiedText(
                 item.content!,
                 style: GoogleFonts.cairo(fontSize: 13.5, color: AppColors.gray600, height: 1.6),
               ),

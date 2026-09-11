@@ -8,6 +8,7 @@ import '../theme/chat_theme.dart';
 import '../theme/sibling_palette.dart';
 import '../widgets/attachment_chip.dart';
 import '../widgets/attachment_picker_sheet.dart';
+import '../widgets/linkified_text.dart';
 
 const List<String> _arabicMonths = [
   'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
@@ -491,9 +492,10 @@ class _MessageBubble extends StatelessWidget {
               ),
             ),
           if (message.text.trim().isNotEmpty)
-            Text(
+            LinkifiedText(
               message.text,
               style: ChatTheme.body(size: 13.5, color: mine ? Colors.white : ChatTheme.ink, height: 1.45),
+              linkColor: mine ? Colors.white : const Color(0xFF1A73E8),
             ),
           const SizedBox(height: 4),
           Row(

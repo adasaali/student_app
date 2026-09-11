@@ -7,6 +7,7 @@ import '../widgets/placeholder_screen.dart';
 import '../providers/student_provider.dart';
 import '../models/homework_item.dart';
 import '../widgets/attachment_chip.dart';
+import '../widgets/linkified_text.dart';
 
 /// الواجبات — تُفتح من الدرج أو بلاطة "الواجبات" بالشاشة الرئيسية.
 /// مربوطة فعلياً بـ StudentProvider.fetchHomework() (بعد ما كانت
@@ -228,7 +229,7 @@ class _HomeworkCard extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 6),
-                    Text(
+                    LinkifiedText(
                       item.assignmentDescription!,
                       style: GoogleFonts.cairo(fontSize: 13, color: AppColors.gray700, height: 1.5),
                     ),
@@ -245,7 +246,7 @@ class _HomeworkCard extends StatelessWidget {
                   Icon(Icons.info_outline_rounded, size: 14, color: AppColors.gray400),
                   const SizedBox(width: 6),
                   Expanded(
-                    child: Text(
+                    child: LinkifiedText(
                       item.notes!,
                       style: GoogleFonts.cairo(fontSize: 12, color: AppColors.gray500, height: 1.4, fontStyle: FontStyle.italic),
                     ),
