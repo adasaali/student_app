@@ -39,3 +39,38 @@ workflows:
         auth: integration
         submit_to_testflight: true
         submit_to_app_store: false
+
+  web-workflow:
+    name: Web (PWA) Workflow
+    max_build_duration: 30
+    environment:
+      flutter: stable
+    scripts:
+      - name: Get Flutter packages
+        script: |
+          flutter pub get
+      - name: Flutter build web
+        script: |
+          flutter build web --release --pwa-strategy=offline-first
+      - name: Force local CanvasKit (avoid Google CDN, blocked/slow in some regions)
+        script: |
+          python3 - << 'PYEOF'
+          path = "build/web/flutter_bootstrap.js"
+          with open(path, "r", encoding="utf-8") as f:
+              content = f.read()
+          old = '_flutter.loader.load({\n  serviceWorkerSettings: {'
+          new = '_flutter.loader.load({\n  config: { canvasKitBaseUrl: "canvaskit/" },\n  serviceWorkerSettings: {'
+          if old in content:
+              content = content.replace(old, new, 1)
+              with open(path, "w", encoding="utf-8") as f:
+                  f.write(content)
+              print("تم تفعيل canvaskit المحلي بنجاح")
+          else:
+              print("تحذير: لم يتم العثور على النمط المتوقع بملف flutter_bootstrap.js")
+          PYEOF
+      - name: Zip web build
+        script: |
+          cd build/web && zip -r ../../student_app_web.zip . && cd ../..
+    artifacts:
+      - student_app_web.zip
+      - build/web/**
