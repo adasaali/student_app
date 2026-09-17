@@ -9,6 +9,7 @@ import 'services/api_service.dart';
 import 'services/notification_service.dart';
 import 'services/local_cache_service.dart';
 import 'screens/login_screen.dart';
+import  'screens/welcome_screen.dart';
 import 'screens/home_shell.dart';
 import 'theme/app_theme.dart';
 import 'widgets/app_startup_screen.dart';
@@ -236,7 +237,12 @@ class _StartupGateState extends State<StartupGate> with WidgetsBindingObserver {
         );
       case _StartupPhase.ready:
         final auth = context.watch<AuthService>();
-        return auth.isLoggedIn ? const HomeShell() : const LoginScreen();
+        // 🆕 المستخدم غير المسجّل دخوله بيوصل أول شي لصفحة عامة عن
+        // المدرسة (WelcomeScreen) وليس مباشرة لشاشة تسجيل الدخول —
+        // هيك بيضمن إنه في محتوى حقيقي ومتاح للجميع بدون حساب، وشاشة
+        // الدخول نفسها بتصير خطوة تالية اختيارية (زر بأسفل الصفحة
+        // العامة) بدل ما تكون أول واجهة يشوفها أي زائر للتطبيق.
+        return auth.isLoggedIn ? const HomeShell() : const WelcomeScreen();
     }
   }
 }
