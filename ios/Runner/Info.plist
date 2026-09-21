@@ -31,6 +31,8 @@
 	<string>يحتاج التطبيق للوصول للميكروفون لتسجيل الرسائل الصوتية وإرسالها في المحادثة. / The app needs microphone access to record and send voice messages in chat.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>يحتاج التطبيق لحفظ الصور المعدّلة في مكتبة الصور.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>لا يستخدم هذا التطبيق موقعك الجغرافي. / This app does not use your location.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>
