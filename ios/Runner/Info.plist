@@ -24,13 +24,17 @@
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>NSCameraUsageDescription</key>
-	<string>يحتاج التطبيق للوصول للكاميرا لالتقاط صور وإرفاقها في المحادثة.</string>
+	<string>يحتاج التطبيق للوصول للكاميرا لالتقاط صور وإرفاقها في المحادثة. / The app needs camera access to take photos and attach them in chat.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>يحتاج التطبيق للوصول لمكتبة الصور لحفظ أو اختيار الصور.</string>
+	<string>يحتاج التطبيق للوصول لمكتبة الصور لاختيار الصور والفيديو وإرفاقها. / The app needs photo library access to choose photos and videos to attach.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>يحتاج التطبيق للوصول للميكروفون لتسجيل الرسائل الصوتية وإرسالها في المحادثة. / The app needs microphone access to record and send voice messages in chat.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>يحتاج التطبيق لحفظ الصور المعدّلة في مكتبة الصور.</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>لا يستخدم هذا التطبيق بيانات الموقع الجغرافي حاليًا.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>
@@ -65,14 +69,14 @@
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>UISupportedInterfaceOrientations~ipad</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>

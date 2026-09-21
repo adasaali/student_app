@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:app_settings/app_settings.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -50,47 +51,80 @@ class _AttachmentPickerSheetState extends State<_AttachmentPickerSheet> {
     super.dispose();
   }
 
+  String? _errorMsg;
+  bool _errorOpensSettings = false;
+
+  // نعرض الخطأ داخل الشيت نفسه (الـ SnackBar بيظهر ورا الشيت المنبثق).
+  void _showMsg(String msg, {bool openSettings = false}) {
+    if (!mounted) return;
+    setState(() {
+      _errorMsg = msg;
+      _errorOpensSettings = openSettings;
+    });
+  }
+
   Future<void> _pickImage(ImageSource source) async {
-    final picked = await ImagePicker().pickImage(source: source, imageQuality: 85);
-    if (picked != null && mounted) {
-      Navigator.pop(context, PickedAttachment(File(picked.path), AttachmentKind.image));
+    try {
+      final picked = await ImagePicker().pickImage(source: source, imageQuality: 85);
+      if (picked != null && mounted) {
+        Navigator.pop(context, PickedAttachment(File(picked.path), AttachmentKind.image));
+      }
+    } catch (_) {
+      _showMsg(
+        source == ImageSource.camera
+            ? 'تعذّر فتح الكاميرا — تأكد من السماح بالوصول من الإعدادات'
+            : 'تعذّر فتح مكتبة الصور — تأكد من السماح بالوصول من الإعدادات',
+        openSettings: true,
+      );
     }
   }
 
   Future<void> _pickVideo() async {
-    final picked = await ImagePicker().pickVideo(source: ImageSource.gallery);
-    if (picked != null && mounted) {
-      Navigator.pop(context, PickedAttachment(File(picked.path), AttachmentKind.video));
+    try {
+      final picked = await ImagePicker().pickVideo(source: ImageSource.gallery);
+      if (picked != null && mounted) {
+        Navigator.pop(context, PickedAttachment(File(picked.path), AttachmentKind.video));
+      }
+    } catch (_) {
+      _showMsg('تعذّر اختيار الفيديو', openSettings: true);
     }
   }
 
   Future<void> _pickFile() async {
-    final result = await FilePicker.platform.pickFiles();
-    final path = result?.files.single.path;
-    if (path != null && mounted) {
-      Navigator.pop(context, PickedAttachment(File(path), AttachmentKind.file));
+    try {
+      final result = await FilePicker.platform.pickFiles();
+      final path = result?.files.single.path;
+      if (path != null && mounted) {
+        Navigator.pop(context, PickedAttachment(File(path), AttachmentKind.file));
+      }
+    } catch (_) {
+      _showMsg('تعذّر اختيار الملف');
     }
   }
 
   Future<void> _startRecording() async {
-    final granted = await _recorder.hasPermission();
-    if (!granted) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('تحتاج صلاحية الميكروفون للتسجيل')),
-        );
+    try {
+      final granted = await _recorder.hasPermission();
+      if (!granted) {
+        _showMsg('تحتاج صلاحية الميكروفون للتسجيل — فعّلها من الإعدادات', openSettings: true);
+        return;
       }
-      return;
+      final dir = await getTemporaryDirectory();
+      final path = '${dir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
+      await _recorder.start(const RecordConfig(encoder: AudioEncoder.aacLc), path: path);
+      if (!mounted) {
+        await _recorder.stop();
+        return;
+      }
+      setState(() {
+        _isRecording = true;
+        _recordStartedAt = DateTime.now();
+        _recordDuration = Duration.zero;
+      });
+      _tickRecordDuration();
+    } catch (_) {
+      _showMsg('تعذّر بدء التسجيل الصوتي، حاول مرة أخرى');
     }
-    final dir = await getTemporaryDirectory();
-    final path = '${dir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
-    await _recorder.start(const RecordConfig(), path: path);
-    setState(() {
-      _isRecording = true;
-      _recordStartedAt = DateTime.now();
-      _recordDuration = Duration.zero;
-    });
-    _tickRecordDuration();
   }
 
   void _tickRecordDuration() async {
@@ -102,8 +136,13 @@ class _AttachmentPickerSheetState extends State<_AttachmentPickerSheet> {
   }
 
   Future<void> _stopRecording({required bool keep}) async {
-    final path = await _recorder.stop();
-    setState(() => _isRecording = false);
+    String? path;
+    try {
+      path = await _recorder.stop();
+    } catch (_) {
+      path = null;
+    }
+    if (mounted) setState(() => _isRecording = false);
     if (!keep || path == null) {
       if (path != null) {
         try {
@@ -125,15 +164,18 @@ class _AttachmentPickerSheetState extends State<_AttachmentPickerSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: Container(
-        margin: const EdgeInsets.all(12),
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: SafeArea(
+        child: Container(
+          margin: const EdgeInsets.all(12),
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: _isRecording ? _buildRecordingView() : _buildOptionsGrid(),
         ),
-        child: _isRecording ? _buildRecordingView() : _buildOptionsGrid(),
       ),
     );
   }
@@ -149,6 +191,19 @@ class _AttachmentPickerSheetState extends State<_AttachmentPickerSheet> {
         const SizedBox(height: 16),
         Text('إرفاق ملف', style: GoogleFonts.cairo(fontWeight: FontWeight.w800, fontSize: 15, color: AppColors.navy)),
         const SizedBox(height: 16),
+        if (_errorMsg != null) ...[
+          Text(
+            _errorMsg!,
+            textAlign: TextAlign.center,
+            style: GoogleFonts.cairo(fontSize: 12.5, color: AppColors.red, fontWeight: FontWeight.w600),
+          ),
+          if (_errorOpensSettings)
+            TextButton(
+              onPressed: () => AppSettings.openAppSettings(),
+              child: Text('فتح الإعدادات', style: GoogleFonts.cairo(fontWeight: FontWeight.w700)),
+            ),
+          const SizedBox(height: 8),
+        ],
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
