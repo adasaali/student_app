@@ -28,7 +28,10 @@ workflows:
           xcode-project use-profiles
       - name: Flutter build ipa
         script: |
+          BUILD_NUMBER=$(($(app-store-connect get-latest-testflight-build-number "$APP_STORE_APPLE_ID") + 1))
+          echo "Using build number: $BUILD_NUMBER"
           flutter build ipa --release \
+            --build-number=$BUILD_NUMBER \
             --export-options-plist=/Users/builder/export_options.plist
     artifacts:
       - build/ios/ipa/*.ipa
